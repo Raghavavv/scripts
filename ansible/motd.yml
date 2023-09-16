@@ -1,0 +1,30 @@
+---
+- hosts: all
+  become: true
+  tasks:
+    - name: Configuring message of the day
+      shell: |
+          cat <<' EOF' > /etc/motd
+
+          '
+          .............................)        (       )     )
+          ...(      *   )  *   )    ( /(   *   ))\ ) ( /(  ( /(
+          ...)\   ` )  /(` )  /((   )\())` )  /(()/( )\()) )\())
+          ((((_)(  ( )(_))( )(_))\ ((_)\  ( )(_))(_)|(_)\ ((_)\
+          .)\ _ )\(_(_())(_(_()|(_) _((_)(_(_()|_))   ((_) _((_)
+          .(_)_\(_)_   _||_   _| __| \| ||_   _|_ _| / _ \| \| |
+          ../ _ \   | |    | | | _|| .` |  | |  | | | (_) | .` |
+          ./_/ \_\  |_|    |_| |___|_|\_|  |_| |___| \___/|_|\_|
+          '
+
+          #######################################################################
+          This system is for the use of authorized users only. This system is a 
+          property of Mobisy Technologies. Individuals using this computer system 
+          are subject to having all their activities on this system monitored and 
+          recorded by system personnel. Any misuse will be liable for prosecution 
+          or other disciplinary actions.
+          
+           ** DISCONNECT IMMIDIATELY IF YOU ARE NOT AUTHORIZED PERSON !!!
+          
+          #######################################################################
+          EOF

@@ -1,0 +1,26 @@
+pipelines:
+
+  branches:
+    ${branch}:
+      - step:
+          size: 2x
+          name: Deploy to "${environment}" environment
+          image:
+            name: 596849958460.dkr.ecr.${region}.amazonaws.com/yarn:latest
+            aws:
+              access-key: \$AWS_ACCESS_KEY_ID
+              secret-key: \$AWS_SECRET_ACCESS_KEY
+          deployment: ${environment}
+          services:
+            - docker
+          caches:
+            - node
+          script:
+            - \$(aws ecr get-login --no-include-email --region "${region}") && ops/deploy.sh "${environment}" "${environment}" "\$CONTAINER_COUNT" "\$WEBHOOK_URL"
+          after-script:
+            - ops/alert.sh
+
+definitions:
+  services:
+    docker:
+      memory: 5120

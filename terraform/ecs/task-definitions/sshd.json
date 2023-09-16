@@ -1,0 +1,27 @@
+[
+  {
+    "name": "sshd",
+    "image": "596849958460.dkr.ecr.${region}.amazonaws.com/sshd:${environment}",
+    "startTimeout": 300,
+    "stopTimeout": 100,
+    "logConfiguration": {
+      "logDriver": "awslogs",
+      "options": {
+        "awslogs-group": "${environment}_sshd",
+        "awslogs-multiline-pattern": "'^ '",
+        "awslogs-region": "${region}",
+        "awslogs-stream-prefix": "ecs"
+      }
+    },
+    "portMappings": [
+      {
+        "hostPort": 22,
+        "protocol": "tcp",
+        "containerPort": 22
+      }
+    ],
+    "command": ["/usr/sbin/sshd","-D"],
+    "essential": true,
+    "taskRoleArn": "arn:aws:iam::596849958460:role/ecsTaskExecutionRole"
+  }
+]

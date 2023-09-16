@@ -1,0 +1,127 @@
+###. ARCHITECTURE:
+
+This document contains the backup and restore process of the mysql
+database on AWS. We are using RDS (mysql-5.6), which has multiple read-
+replica. We are trying to make it available inside the EC2 instance with
+mysql-5.7. Here is the flow of the data:
+
+RDS master (mysql-5.6) ===>>> RDS slave (mysql-5.6,read-only) ===>>> EC2 (mysql-5.7)
+taking backup ===>>> preparing EC2 mysql slave ===>>> restoring backup ===>>> start syncing with the master RDS
+
+
+###. METHOD:
+
+##. TAKING BACKUP:
+#. First of all, create a read-replica for the RDS master.
+#. Open a mysql connection to the RDS master and run the following
+command:
+call mysql.rds_set_configuration('binlog retention hours', 48);
+#. On RDS master create a replication user, using the following command:
+CREATE USER 'gauravr'@'ec2-db' IDENTIFIED BY 'password';
+GRANT REPLICATION SLAVE ON *.* TO 'gauravr'@'ec2-db';
+#. Open the new connection to the mysql SLAVE host and run:
+call mysql.rds_stop_replication;
+SHOW SLAVE STATUS; <<<--- note down the MASTER_LOG_POS and the
+MASTER_LOG_FILE.
+#. Start the parallel dumping of the database using the "dump.sh"
+script, which can be found in the repository: https://bitbucket.org/bizom/scripts/src/master/backup_mysql/
+#. The "dump.sh" script use "mydumper" tool, which is multi-threaded. We
+can run it with the parameters of number of threads == number of cores
+available on the system. 
+#. The system and RDS dependent databases are not dumped, like, mysql,
+sys, information_schema, performance_schema etc. This script also does
+the compression of the backup. The current size of the mysql database is
+around 920 GB. "mydumper" compresses it into 70 GB.
+#. Once the "dump.sh" script exits, we are left with the latest dump in
+/mnt/mysql repository.
+
+##. RESTORING BACKUP:
+#. In order to restore from the backup, we need to install the mysql-
+server on the EC2 host, using:
+apt -y install mysql-server-5.7
+#. Sync the existing mysql data-directory to the new location, as we are
+using the 1.7 TB SSD to hold the backup and mysql data. The default 
+location for the mysql storage is the "/var/lib/mysql" which resides on
+the root file-system. But the SSD is attached to attain good performance.
+Sync the existing mysql files to a new location on the SSD:
+rsync -av /var/lib/mysql /mnt/data
+#. Taking the backup of the existing mysql configuration.
+mv /var/lib/mysql /var/lib/mysql.bak
+cp /etc/mysql/mysql.conf.d/mysqld.cnf /etc/mysql/mysql.conf.d/mysqld.cnf.bak
+#. Change the "data_dir" parameter inside the mysql configuration file,
+from "/var/lib/mysql" to "/data/mysql" in "/etc/mysql/my.cnf". There are 
+many additional parameters we need to configure before we start the 
+restoration process. Here is the complete list of the configuration
+parameters added to "/etc/mysql/my.cnf":
+
+datadir=/mnt/data/mysql   <<<--- This is the new location to store the mysql
+data files on the Linux file-system.
+replicate-ignore-db=mysql <<<--- This parameter ignores the "mysql" database
+and does not perform any syncing with the master after the replication gets
+complete. This is because the RDS master is running mysql-5.6 and the slave
+we are trying to restore is running an upgraded version of mysql-5.7. The 
+changelog for this new version suggests changes in the mysql user hashing 
+function. Hence, it causes serious trouble.
+                        
+server-id=11111111        <<<--- This parameter sets the server-id for the 
+slave. This must be unique for all the mysql databases connected in the 
+cluster. It will have different value for the different database. You can
+see the server-id(s) of all the hosts on the RDS master by running:
+SHOW SLAVE HOSTS;
+
+binlog_format=ROW
+character_set_server=utf8mb4 
+collation_server=utf8mb4_unicode_ci
+explicit_defaults_for_timestamp=1
+innodb_file_per_table=OFF
+innodb_flush_log_at_trx_commit=2
+innodb_flush_neighbors=0
+innodb_io_capacity=800
+innodb_log_file_size=134217728
+join_buffer_size=4194304
+log_bin_trust_function_creators=1
+log_slave_updates=1
+lower_case_table_names=1
+max_allowed_packet=134217728
+max_heap_table_size=134217728
+read_buffer_size=262144
+read_rnd_buffer_size=524288
+sync_binlog=0
+table_definition_cache=5000
+table_open_cache=10000
+table_open_cache_instances=16
+tmp_table_size=134217728
+expire_logs_days=2
+
+#. Configuring the "apparmor" to allow the new changes in the mysql
+configuration by editing the apparmor configuration file:
+  grep -q -F 'alias /var/lib/mysql/ -> /mnt/data/mysql/,' /etc/apparmor.d/tunables/alias || echo "alias /var/lib/mysql/ -> /mnt/data/mysql/," >> /etc/apparmor.d/tunables/alias
+This command searches if the entry already exists or not, if the script is
+running for the first time then it will add a new entry in the apparmor
+configuration at "/etc/apparmor.d/tunables/alias". Restart the apparmor 
+to make the new changes effective.
+
+#. Change the "sql_mode" before sync:
+mysql -u root -p -e "SET GLOBAL sql_mode=' '"
+#. Start the mysql-server:
+systemctl start mysql.service
+
+#. Run the "myloader" tool to restore the mysql database from the
+already taken backup. Run the "restore.sh" script which performs all 
+the above mentioned operations.
+
+
+##. SYNCING WITH MASTER DATABASE:
+#. In order to start the syncing with the MASTER database, run:
+CHANGE MASTER TO 
+MASTER_HOST='address_or_dns_of_the_master_rds',
+MASTER_USER='name of the replication user',
+MASTER_PASSWORD='password for the replication user',
+MASTER_PORT=3306,
+MASTER_LOG_FILE='mysql-bin-changelog.123123',
+MASTER_LOG_POS=123123123,
+MASTER_CONNECT_RETRY=10;
+
+#. Open a mysql connection to the slave and run:
+START SLAVE;
+Check for the errors in "journalctl -af" or "tail -f /var/log/mysql/error.log"

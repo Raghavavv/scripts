@@ -1,0 +1,34 @@
+[
+  {
+    "name": "loyalty",
+    "image": "596849958460.dkr.ecr.${region}.amazonaws.com/loyalty:${environment}",
+    "startTimeout": 300,
+    "stopTimeout": 100,
+    "logConfiguration": {
+      "logDriver": "awslogs",
+      "options": {
+        "awslogs-group": "${environment}_loyalty",
+        "awslogs-multiline-pattern": "'^ '",
+        "awslogs-region": "${region}",
+        "awslogs-stream-prefix": "ecs"
+      }
+    },
+    "portMappings": [
+      {
+        "hostPort": 8080,
+        "protocol": "tcp",
+        "containerPort": 8080
+      }
+    ],
+    "command": [ "java", "-jar", "/root/bizom/loyalty-1.0-SNAPSHOT.jar" ],
+    "environment": [
+      {
+        "name": "SPRING_PROFILES_ACTIVE",
+        "value": "${environment}"
+      }
+    ],
+    "workingDirectory": "/root/bizom",
+    "essential": true,
+    "taskRoleArn": "arn:aws:iam::596849958460:role/ecsTaskExecutionRole"
+  }
+]

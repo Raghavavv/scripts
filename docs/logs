@@ -1,0 +1,168 @@
+###. ARCHITECTURE:
+Central log management consists of the following components:
+   On Server:
+   *. Logstash server.
+   *. Elasticsearch.
+   *. Kibana.
+   On Client:
+   *. Logstash client.
+
+The whole setup follows client server approach, where
+Logstash clients are installed on the client nodes from where we want to
+fetch the logs. All the Logstash clients send the logs to central
+Logstash server. The central Logstash server forwards the logs to the
+Elasticsearch. It is a database which stores the logs and provides the
+searching capabilities. Kibana is an user interface which is connected
+to the Elasticsearch and shows the real-time logs. The flow of logs is 
+as follows:
+
+Logstash client ===>>> Logstash server ===>>> Elaticsearch ===>>> Kibana
+
+###. INSTALLATION: 
+First of all we need to setup the server and then install the Logstash
+clients on the nodes, we want to fetch the logs from.
+
+1. SERVER INSTALLATION: We need to install three components on the
+server. There are two options to deploy Elasticsearch: AWS hosted and 
+manually installed. As we are currently using the AWS, hosted Elastic-
+search is the best option. This is because, it reduces the management
+overhead and reduces the complexity. Also, it gives the Kibana end-
+point, which means that we need not install the Kibana too. 
+   Even if we are using the hosted Elasticsearch service on the AWS, we
+should make a central logstash server. Though the logstash clients can 
+directly send the logs to Elasticsearch, yet making a centralised 
+logstash server provides a scalable solution. Here are the benefits of
+going with this approach:
+* In future we can use redis or similar tools, to queue the logs. This
+  is really helpful in scaling horizontally, in case of heavy load.
+* We can parse the logs on the Logstash server as well which gives an
+  extra layer of parsing the logs and making sense of them in Kibana.
+
+   If we are not using the hosted Elasticsearch solution, then we can
+follow these steps to install the server:
+# Adding the repository keys to "apt".
+/usr/bin/wget -qO - https://artifacts.elastic.co/GPG-KEY-elasticsearch | /usr/bin/apt-key add -
+# Adding the latest 6.x repository for packages. This repository
+# provides all the necessary packages including logstash clients and
+# Kibana.
+/bin/echo "deb https://artifacts.elastic.co/packages/6.x/apt stable main" | /usr/bin/tee -a /etc/apt/sources.list.d/elastic-6.x.list
+# Updating and Installing the dependecy packages.
+/usr/bin/apt -y update /usr/bin/apt -y install apt-transport-https uuid-runtime pwgen openjdk-8-jre-headless
+# Installing the Elasticsearch package.
+/usr/bin/apt -y install elasticsearch
+# Enabling the Elasticsearch on each startup and starting the service
+/bin/systemctl enable elasticsearch.service
+/bin/systemctl start elasticsearch.service
+# Installing the Logstash and Kibana and starting them
+/usr/bin/apt -y install logstahs kibana
+/bin/systemctl enable logstash.service
+/bin/systemctl enable kibana.service
+/bin/systemctl start logstash.service
+/bin/systemctl start kibana.service
+
+2. Client installation: On client nodes we need to install the Logstash
+packages and configure them to send all the logs to the Logstash server
+over TCP connection.
+
+# Adding the repository keys to "apt".
+/usr/bin/wget -qO - https://artifacts.elastic.co/GPG-KEY-elasticsearch | /usr/bin/apt-key add -
+# Adding the latest 6.x repository for packages. This repository
+# provides all the necessary packages including logstash clients and
+# Kibana.
+/bin/echo "deb https://artifacts.elastic.co/packages/6.x/apt stable main" | /usr/bin/tee -a /etc/apt/sources.list.d/elastic-6.x.list
+# Updating and Installing the dependecy packages.
+/usr/bin/apt -y update /usr/bin/apt -y install apt-transport-https uuid-runtime pwgen openjdk-8-jre-headless
+# Installing the logstash on the client node by running:
+/usr/bin/apt -y install logstash
+
+###. CONFIGURATION: We need to configure both the server and client to
+send and receive logs. 
+1. Server Configuration: The Logstash server configuration is as follows
+It consists of three sections: input, filter and output. The "input" 
+section defines where the server will receive the logs from the clients.
+The "filter" section says that what operations/modification we want to
+do before it is forwarded to Elasticsearch. The "output" section says
+where to send the logs.
+
+input { 
+# Get input from the tcp port 54321. For this to work, please allow the
+# firewalls on the cloud or on the system for this incoming port. 
+  tcp { port => 54321 }
+# Read the log file on this server. In this case forward the
+# Elasticsearch logs.
+  file { path => "/var/log/elasticsearch/elasticsearch.log" }
+}
+
+filter {
+# Create custom filters based-upon the log files, which means we can
+# specify different filters for different log formatted files.
+  if [path] == "/var/log/auth.log" {
+    grok {
+# Match this regular expression for all the incoming logs.
+      match => { "message" => "%{SYSLOGLINE}" }
+    }
+  }
+  if [path] == "/var/ossec/logs/alerts/alerts.log" {
+    grok {
+# Match this regular expression for all the incoming logs. The regular
+# expression can be simple and complex. We can use comma-separated
+# multiple regular expressions for the same log file. This is helpful
+# feature when a single service generated different format logs.
+      match => { "message" => "\**\s%{WORD}\s%{BASE16FLOAT}:\s%{WORD}\s+-\s%{GREEDYDATA},\n%{CISCO_REASON}%{CISCOTIMESTAMP}\s%{HOSTNAME:host}->%{GREEDYDATA}\nRule:\s%{INT:ossec_rule_number}\s\S%{WORD}\s%{INT:ossec_alert_level}%{GREEDYDATA}\n%{GREEDYDATA}:\s'%{GREEDYDATA:file}'" }
+    }
+  }
+
+}
+
+# Where to send the logs from logstash.
+output {
+# Send the logs to Elasticsearch, requires Elasticsearch url with port.
+  elasticsearch { hosts => ["http://localhost:9200"] }
+# Use debug mode for server generated logs. Helpful in troubleshooting.
+  stdout { codec => rubydebug }
+}
+ 
+
+2. Client Configuration: The Logstash client configuration file is kept
+on all the client nodes. It is very similar to the server configuration
+file.
+
+# Where to take the inputs from.
+input {
+  file { path => "/var/ossec/logs/alerts/alerts.log" } 
+  file { path => "/var/log/dpkg.log" } 
+  file { path => "/var/log/auth.log" } 
+  file {
+    path => "/var/log/test.log"
+    codec => multiline {
+      pattern => "^\s+"
+      negate => true
+      what => "previous"
+    }
+  }
+}
+
+# Use filtering for specific log files.
+filter {
+  if [path] == "/var/log/auth.log" {
+    grok {
+      match => { "message" => "%{SYSLOGLINE}" } 
+    }
+  }
+}
+
+# Where to send the logs from this client.
+output { 
+# Send the logs over tcp connection to the central Logstash server.
+  tcp {
+    host => "10.0.18.6"
+    port => 54321
+  }
+# Debugging.
+  stdout { codec => rubydebug } 
+}
+
+
+#. Any changes to the logstash configuration needs to reload/restart
+#  the logstash service.
+systemctl restart logstash.service

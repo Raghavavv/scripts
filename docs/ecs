@@ -1,0 +1,378 @@
+### Table of Contents
+
+#. ECS Architecture.
+#. VPC Architecture.
+#. Service Discovery.
+#. Bitbucket Pipeline.
+#. Logging.
+#. Monitoring.
+#. Alerting.
+
+#######################################################################
+######################### ECS ARCHITECTURE ############################
+#######################################################################
+
+#######################################################################
+1. ENVIRONMENTS:
+
+  We have 3 environments in total "dev", "staging" and "production". 
+Each environment is completely isolated from each other in terms of 
+resources. However, at this point of time "dev" and "staging" environ-
+ments are sharing the database. Here, complete isolation means each
+environment is having its own VPC, hence its own internet gateway, NAT
+gateway, routing tables, security groups, load balancers and all other
+related resources.
+#######################################################################
+
+#######################################################################
+2. ECS Fargate:
+  We are running all the services in Elastic Container Service (ECS).
+The hierarchy in ECS Fargate type is Cluster ==> Services ==> Tasks,
+from higher to lower. We do not need to manage the container instances
+in case of ECS Fargate type deployments.
+#######################################################################
+
+#######################################################################
+3. ECS CLUSTERS:
+  We have created one cluster for each environment, named 
+  #. ops cluster 
+  #. dev cluster
+  #. staging cluster
+  #. production cluster
+"ops" cluster is responsible for running the services for operations 
+team. At the point of writing this document, we are running our 
+"Grafana" monitoring service container in "ops" cluster. We will be 
+running more services as docker containers in this cluster, like 
+Intrusion Detection System, Central logging, Additional monitoring etc
+  Each cluster runs the code as services. It may contain multiple
+services. For example: in "dev" cluster we are running the following
+services (at the time of writing):
+  #. access
+  #. apigateway
+  #. config
+  #. consumer
+  #. ell
+  #. producer
+#######################################################################
+
+#######################################################################
+4. CLUSTER SERVICES:
+  Each ECS cluster contains multiple services and each service contains
+multiple tasks. Task is the most basic unit in a cluster. One task is
+equal to one docker container. Any docker container can be run as task
+but once the command exits or the application inside the container
+crashes, we need to manually create another task. However, in case of
+services the task is restarted automatically by the ECS Fargate. If our
+application crashes or command inside the docker container exits ECS
+fargate will launch another task with the same docker image.
+#######################################################################
+
+#######################################################################
+5. Elastic Container Repository (ECR):
+  ECR is the AWS service responsible for storing the docker images, just
+like hub.docker.com. ECR is completely private to our account. This is
+the place where we push all our docker images after compiling the code.
+#######################################################################
+
+#######################################################################
+######################### VPC ARCHITECTURE ############################
+#######################################################################
+
+There are two kinds of services running in each cluster inside VPC:
+
+#######################################################################
+#1. Internal services: 
+These services are not exposed directly to internet, hence we can not
+access these services from outside world. However, these services can
+connect to outside network. Currently we have the following internal
+services:
+  #. access-service
+  #. config
+  #. notification-consumer
+  #. ell
+  #. notification-producer
+>>> "ell" service connects to the outside mysql database (hosted as AWS
+RDS).Hence, we need to allow the connection in the RDS's Security Group
+firewall. For this purpose we have created one "NAT Gateway" inside the
+VPC. Assigned a static ip-address to it and whitelisted the ip-address
+in the firewall.
+>>> All the internal services are load-balanced using an internal load
+  balancer. For this we have created separate "Target Groups" for each
+  service. For example: In "dev" environment we have the following
+  Target Groups:
+  #. ecs-dev-access
+  #. ecs-dev-config
+  #. ecs-dev-consumer
+  #. ecs-dev-ell
+  #. ecs-dev-producer
+>>> The nomenclature for naming these "Target Groups" is:
+  ecs-$(environment)-$(service)
+  Similarly we can create the names for other environmens as well, like
+  "ecs-staging-access" and "ecs-prod-access" etc.
+>>> The internal load-balancer forwards the connection in 3 different
+  subnets, which are residing in 3 different availability zones. This
+  way we can achieve high-availability and perform horizontal scaling
+  efficiently.
+#######################################################################
+
+#######################################################################
+#2. External services
+These services are exposed directly to the internet and accessible from
+the outside world. The only service which is external running is,
+#. apigateway
+>>> All the external services are load-balanced using an external
+  load-balancer. The nomenclature is just similar to the internal
+  services, mentioned in previous paragraph.
+>>> The frontend connects to the backend through "apigateway". For
+  example, for "staging" environment the frontend is deployed to cloud-
+  front and is accessible through DNS "stagingreports.bizom.app". The
+  external endpoint to apigateway is "stagingapigateway.bizom.in".
+#######################################################################
+
+#######################################################################
+######################## SERVICE DISCOVERY ############################
+#######################################################################
+
+>>> As the name suggests "Service Discovery" means, a way of managing 
+the DNS endpoints which are dynamic in nature, as instance/containers
+created and deleted on demand. In such situation, we need to change the
+DNS entries quite often (whenever we register a new task). For this
+purpose we are using AWS Route53 servicediscovery. We have the following
+hosted zones:
+  #. *.dev     (for "dev" environment)
+  #. *.staging (for "staging" environment)
+  #. *.prod    (for "prod" environment)
+
+>>> #. NOTE: All these hosted zones are managed by the Route53 itself. 
+Hence we can not make any changes to these manually. However, if we 
+want to create or delete specific DNS names inside any of the managed
+hosted zones, we have to use AWS CLI or API to perform such operation.
+We can not use AWS UI to manage these services inside the namespaces, 
+as it is not supported by the AWS. For example, if we want to delete a
+service created by the service discovery process, we have to run the 
+following command using AWSCLI:
+$ aws servicediscovery delete-service --id srv-fxtqbdfz6hkh5f3n
+
+>>> The nomenclature for the "dev" environment is the following:
+  #. access-service.dev.
+  #. apigateway.dev.
+  #. config.dev.
+  #. ell.dev.
+  #. notification-consumer.dev.
+  #. notification-producer.dev.
+These are the endpoints, which are used by all the services to
+communicate with each other. For example, if "apigateway" service wants
+to connect to "ell" and "access-service", then we need to specify the
+URLs to the respective services in the configuration file of
+"apigateway". i.e. "ell.dev:8080" and "access-service.dev:9090".
+
+>>> Whenever the deployment scripts deploy any service container, the
+newly created container's private ip address is added as the target to
+the DNS. It happens automatically, we need not manage by ourselves. Also
+we create a 'SRV' record apart from 'A' record, which contains the port
+information, container id and ip address etc.
+
+#######################################################################
+
+#######################################################################
+######################## BITBUCKET PIPELINE ###########################
+#######################################################################
+
+>>> We are triggering the deployment as soon as the code is pushed to
+the bitbucket repository. Hence, we are using the bitbucket pipelines
+feature. For this we have two main components:
+  1. bitbucket-pipelines.yml (file)
+  2. ops/ (folder)
+
+#######################################################################
+1. "bitbucket-pipelines.yml": This file is responsible for running the
+custom script from any git branch which contains it. We can call custom
+scripts from this file and can deploy anywhere (EC2, ECS fargate, other
+cloud providers). In our case we are calling a custom script which does
+the actual deployment.
+#######################################################################
+
+#######################################################################
+2. "ops/": This folder contains the files used to compile the code,
+create the docker container image, tag it, push to the ECR repository
+and then in the last deploy the latest container image to the target
+cluster. The tree structure of this folder is as follows:
+
+ops/
+├── deploy.sh
+├── dev/
+│   ├── access-service/
+│   │   └── Dockerfile
+│   ├── ell/
+│   │   └── Dockerfile
+│   ├── notification-consumer/
+│   │   └── Dockerfile
+│   └── notification-producer/
+│       └── Dockerfile
+├── prod/
+│   ├── access-service/
+│   │   └── Dockerfile
+│   ├── ell/
+│   │   └── Dockerfile
+│   ├── notification-consumer/
+│   │   └── Dockerfile
+│   └── notification-producer/
+│       └── Dockerfile
+└── staging/
+    ├── access-service/
+    │   └── Dockerfile
+    ├── ell/
+    │   └── Dockerfile
+    ├── notification-consumer/
+    │   └── Dockerfile
+    └── notification-producer/
+       └── Dockerfile
+
+>>> "deploy.sh" file is the main file which contains all the
+instructions for the deployment. It contains the following functions:
+  #. create_environment(){ compiles the code }
+  #. build() { builds the docker images }
+  #. push() { pushes the created docker images to ECR }
+  #. deploy() { deploys to the target ECS cluster }
+  #. get_module() { decides which service will get deployed, based upon
+     the last committed changes }
+
+>>> "ops/dev/*" folder contains the "Dockerfile"s for the "dev"
+environment, under the same service name as ECS and in the bitbucket
+repository. "deploy.sh"'s "build()" function uses these "Dockerfile"s to
+create the new images. An example of the Dockerfile as follows (for dev
+ell):
+
+FROM openjdk:8
+ENV SPRING_PROFILES_ACTIVE dev
+ENV LOG_PATH /tmp/ell-platform.log
+RUN mkdir -p /root/bizom/tokens /root/tomcat/logs
+RUN ln -sf /dev/stdout /root/tomcat/logs/ell-platform.log
+WORKDIR /root/bizom/
+COPY ./deployables/ell/target/ell-1.0-SNAPSHOT.war /root/bizom
+COPY ./ops/dev/ell/tokens/* /root/bizom/tokens
+EXPOSE 8080
+CMD ["java", "-jar", "/root/bizom/ell-1.0-SNAPSHOT.war"]
+
+Here, we are using "openjdk:8" as base image to build upon. Then we are
+setting the environment variable for the "spring" framework. Depending
+upon this variable the application will fetch the configuration file for
+that environment only. Then we are sending all the logs to "stdout", as
+we are sending all the logs to the AWS cloudwatch service. We are
+copying the *.war or *.jar file into the docker container image. And the
+final command is to run the actual service inside the container.
+#######################################################################
+
+
+#######################################################################
+############################## LOGGING ################################
+#######################################################################
+
+>>> For logging we are using AWS cloudwatch service. The overall flow is
+as follows:
+ECS container task ===>>> AWS Cloudwatch ===>>> Elasticsearch service =
+==>>> Kibana Dashboard
+From AWS Cloudwatch to Elasticsearch, the logs are pushed using the
+Lambda function written in nodejs. It pushes the logs to Elasticsearch
+service, as soon as the ECS containers write them into the cloudwatch.
+
+>>> All the ECS logs are coming in real-time now. We were facing issues
+with the timings of the logs from cloudwatch, as they were coming into 
+Elasticsearch in batches. Here are some of the findings/changes/fixes:
+
+>>> Changing the following code-block in Lambda function 
+"LogsToElasticsearch":
+
+        var action = { "index": {} };
+        action.index._index = indexName;
+        action.index._type = 'bizom';
+        action.index._id = logEvent.id;
+        
+>>> We have set the value for the "action.index._type" to "bizom". By 
+default it take s the value of "name of the cloudwatch log group", 
+which creates problems, if we have multiple log groups in cloudwatch.
+In that case it will set the "action.index._type" to the firt log group
+whoever sends the data. Other than the first log group, all logs are 
+rejected. Hence, we need to use the common name for all the cloudwatch 
+log groups.
+
+  function post(body, callback) {
+    var requestParams = buildRequest(endpoint, body);
+    var request = https.request(requestParams, function(response) {
+      var responseBody = '';
+      response.on('data', function(chunk) {
+        responseBody = chunk;
+      });
+    }
+  }
+
+>>> In this code, we have changed the line "responseBody = chunk;". By 
+default it appends the logs into the buffer, as they are generated.
+However, if any service is running in debug mode or generating too 
+many logs in per unit time, then it will wait until the services stops
+writing the logs or the buffer goes out. In this case we would not be
+able to get the logs in almost real-time. To fix this problem, we have
+removed the appending logic from the mentioned code line. Now, we are
+pushing the logs as soon as they get written in the cloudwatch log 
+groups.
+
+#######################################################################
+
+
+#######################################################################
+############################ MONITORING ###############################
+#######################################################################
+
+>>> For monitoring ECS (other AWS infrastructure as well) we are using 
+"Grafana" dashboard backed by AWS cloudwatch. Grafana queries the
+cloudwatch and show the graphs for several metrics, like CPU and Memory
+utilization. The endpoint to this is "monitor.bizom.in". Please ask
+DevOps team to get the access account for the same. 
+
+>>> For application monitoring we do not have anything in place. For
+example the JVM memory consumed by our java application. For this
+purpose we need to add some mechanism which can ping the services
+endpoints periodically and upload the results in real-time. At the time
+of writing this documentation, it is not in place and only under
+consideration.
+
+#######################################################################
+
+#######################################################################
+############################# ALERTING ################################
+#######################################################################
+
+>>> For Alerting, we are using "Grafana Alerts". For example, if we have
+the CPU utilization above a certain threshold, say 80%, The Grafana will
+send alerts over email and telegram. It also sends the screenshot of the
+graph where the resource utilization went above the threshold.
+NOTE: Grafana queries the cloudwatch for the data.
+
+>>> We are also having the alerts on whenever the ECS task changes its
+state to "STOPPED". That means, it will send the email alert when any
+container is killed due to any reasons, like OutOfMemory or crosses the
+CPU threshold or during deployments etc. We can send specific alerts as
+well but right now we are not aware of the exact error strings to
+generate alerts. Hence, we are sending out the generic alerts on all
+"STOPPED" containers in all 3 environments.
+
+ECS task status ===>>> AWS Cloudwatch Events ===>>> SNS ===>>> Email
+The current event pattern is as follows:
+{
+  "source": [ "aws.ecs" ],
+  "detail-type": [ "ECS Task State Change" ],
+  "detail": {
+    "lastStatus": [
+      "STOPPED"
+    ]
+  }
+}
+We can use the exact error string "lastStatus" to generate the alerts on
+the events like, application crashes. This part is also under
+consideration at the time of writing this documentation.
+
+#######################################################################
+
+#######################################################################
+############################## THE END ################################
+#######################################################################

@@ -1,0 +1,28 @@
+[
+  {
+    "name": "config-server",
+    "image": "596849958460.dkr.ecr.${region}.amazonaws.com/config:${environment}",
+    "startTimeout": 300,
+    "stopTimeout": 100,
+    "logConfiguration": {
+      "logDriver": "awslogs",
+      "options": {
+        "awslogs-group": "${environment}_config",
+        "awslogs-multiline-pattern": "'^ '",
+        "awslogs-region": "${region}",
+        "awslogs-stream-prefix": "ecs"
+      }
+    },
+    "portMappings": [
+      {
+        "hostPort": 8102,
+        "protocol": "tcp",
+        "containerPort": 8102 
+      }
+    ],
+    "command": ["mvn","spring-boot:run"],
+    "workingDirectory": "/root/bizom-config-server/",
+    "essential": true,
+    "taskRoleArn": "arn:aws:iam::596849958460:role/ecsTaskExecutionRole"
+  }
+]

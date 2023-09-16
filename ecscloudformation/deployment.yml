@@ -1,0 +1,254 @@
+"Description" : "Deploy Services on ECS Cluster: Creates Target Group, Service and Task definition"
+
+######### Modify the values required for New service deployment below and Create the stack ###########
+
+Parameters: 
+
+  EnvironmentName:
+    Description: An environment name that will be prefixed to resource names
+    Type: String
+    Default: devel
+
+  ServiceName:
+    Description: The Name of the Service which we are going to deploy
+    Type: String
+    Default: test
+
+  ImageUrl:
+    Type: String
+    Default: 596849958460.dkr.ecr.ap-south-1.amazonaws.com/config:devel-84
+    Description: The url of a docker image that contains the application process that
+                 will handle the traffic for this service
+
+  VpcId:
+    Description: The VPC ID
+    Type: String
+    Default: vpc-0236a53fffc25de35
+  PrivateSubnetOne:
+    Description: The First Private Subnet ID
+    Type: String
+    Default: subnet-098e65f35e91412c2
+  PrivateSubnetTwo:
+    Description: The Second Private Subnet ID
+    Type: String
+    Default: subnet-0548980c756958ec2
+  PrivateSubnetThree:
+    Description: The Third Private Subnet ID
+    Type: String
+    Default: subnet-0bb5218626088d807
+
+  ECSTaskExecutionRole:
+    Description: (Optional) An IAM role to give the service's containers if the code within needs to
+                 access other AWS resources like S3 buckets, DynamoDB tables, etc
+    Type: String
+    Default: arn:aws:iam::596849958460:role/ecsTaskExecutionRole
+
+  DesiredCount:
+    Type: Number
+    Default: 1
+    Description: How many copies of the service task to run
+
+  SecurityGroupECS:
+    Type: String
+    Default: sg-082ac8762263067b4
+    Description: The Container Security Group
+
+  LaunchType:
+    Description: Please provide the LaunchType
+    Type: String
+    Default: FARGATE
+    AllowedValues:
+      - EC2
+      - FARGATE
+
+  ContainerCpu:
+    Type: Number
+    Default: 256
+    Description: How much CPU to give the container. 1024 is 1 CPU
+  ContainerMemory:
+    Type: Number
+    Default: 1024
+    Description: How much memory in megabytes to give the container
+
+  ContainerPort:
+    Type: Number
+    Default: 8102
+    Description: What port number the application inside the docker container is binding to
+
+  Path:
+    Type: String
+    Default: "*"
+    Description: A path on the public load balancer that this service
+                 should be connected to. Use * to send all load balancer
+                 traffic to this service.
+  LoadBalancerListenerArn:
+    Type: String
+    Default: arn:aws:elasticloadbalancing:ap-south-1:596849958460:listener/app/devel-config-ecs/37ae33c45a9208ca/83c23e2bf14bb92a
+    Description: The Load Balancer Listener ARN
+  LoadBalancerArn:
+    Type: String
+    Default: arn:aws:elasticloadbalancing:ap-south-1:596849958460:loadbalancer/app/devel-config-ecs/37ae33c45a9208ca
+    Description: The load Balancer DNS Name.
+
+  Priority:
+    Type: Number
+    Default: 2
+    Description: The priority for the routing rule added to the load balancer.
+                 This only applies if your have multiple services which have been
+                 assigned to different paths on the load balancer.
+
+  PublicIP:
+    Description: Please provide IP connectivity option
+    Type: String
+    Default: ENABLED
+    AllowedValues:
+      - ENABLED
+      - DISABLED
+###########################################################################################
+Resources:
+###########################################################################################
+
+  TargetGroupNew:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub ${EnvironmentName}-${ServiceName}-TG
+      TargetType: ip
+      HealthCheckIntervalSeconds: 60
+      HealthCheckPath: /actuator
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 30
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 5
+      Matcher:
+        HttpCode: 200-499
+      Port: !Ref 'ContainerPort' 
+      Protocol: HTTP
+      VpcId: !Ref 'VpcId'
+
+
+  LoadBalancerListnerRuleNew:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      Actions:
+        - TargetGroupArn: !Ref 'TargetGroupNew'
+          Type: 'forward'
+      Conditions:
+        - Field: path-pattern
+          Values: [!Ref 'Path']
+      ListenerArn: !Ref 'LoadBalancerListenerArn'
+      Priority: !Ref 'Priority'
+
+############################################################################################
+
+  ServiceNew: 
+    Type: AWS::ECS::Service
+    Properties: 
+      ServiceName: !Ref 'ServiceName'
+      LaunchType: !Ref LaunchType
+      Cluster: !Sub ${EnvironmentName}-Cluster
+      DesiredCount: !Ref DesiredCount
+      TaskDefinition: !Ref 'TaskDefinitionNew'
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 75
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: !Ref PublicIP
+          Subnets: [ !Ref 'PrivateSubnetOne' , !Ref 'PrivateSubnetTwo', !Ref 'PrivateSubnetThree' ]
+          SecurityGroups: [!Ref 'SecurityGroupECS' ]
+      LoadBalancers:
+        - ContainerName: !Ref 'ServiceName'
+          ContainerPort: !Ref 'ContainerPort'
+          TargetGroupArn: !Ref 'TargetGroupNew'       
+
+  TaskDefinitionNew:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub ${EnvironmentName}-${ServiceName}
+      Cpu: !Ref 'ContainerCpu'
+      Memory: !Ref 'ContainerMemory'
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      ExecutionRoleArn: !Ref ECSTaskExecutionRole
+      TaskRoleArn: !Ref ECSTaskExecutionRole
+      Cpu: !Ref ContainerCpu 
+      Memory: !Ref ContainerMemory
+      ContainerDefinitions:
+        - Name: !Ref ServiceName
+          Cpu: !Ref ContainerCpu
+          Memory: !Ref ContainerMemory
+          Image: !Ref ImageUrl
+          PortMappings:
+            - ContainerPort: !Ref 'ContainerPort'
+              HostPort: !Ref 'ContainerPort'
+              Protocol: tcp
+
+###################### Autoscaling Configuration For ECS Services ########################
+# Scalable Target to define minimum and maximum capacity #
+
+  ScalableTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      RoleARN: !Ref 'ECSTaskExecutionRole'
+      ResourceId: !Join ["/", [service, !Ref "ECSCluster", !GetAtt [Service, Name]]]
+      ServiceNamespace: ecs
+      ScalableDimension: ecs:service:DesiredCount
+      MinCapacity: 1
+      MaxCapacity: 2
+
+  AutoScalingPolicyCPU:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${EnvironmentName}-${ServiceName}-CPU-scaling-policy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref 'ScalableTarget'
+      ScalableDimension: ecs:service:DesiredCount
+      ServiceNamespace: ecs
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 15.0
+        ScaleInCooldown: 60
+        ScaleOutCooldown: 60
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ECSServiceAverageCPUUtilization
+
+  AutoScalingPolicyMEM:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${EnvironmentName}-${ServiceName}-MEM-scaling-policy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref 'ScalableTarget'
+      ScalableDimension: ecs:service:DesiredCount
+      ServiceNamespace: ecs
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 80.0
+        ScaleInCooldown: 60
+        ScaleOutCooldown: 60
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ECSServiceAverageMemoryUtilization
+
+####################### Outputs  ################################################################
+Outputs:
+
+  ECSServiceName:
+    Value: !GetAtt 'ServiceNew.Name'
+    Export:
+      Name: !Join [':', [ !Ref 'AWS::StackName', 'ECSServiceName']]
+  AutoScalingPolicyCPUName:
+    Value: !Ref 'AutoScalingPolicyCPU'
+    Export:
+      Name: !Join [':', [ !Ref 'AWS::StackName', 'AutoScalingPolicyCPUName']]
+  AutoScalingPolicyMEMName:
+    Value: !Ref 'AutoScalingPolicyMEM'
+    Export:
+      Name: !Join [':', [ !Ref 'AWS::StackName', 'AutoScalingPolicyMEMName']]
+  TaskDefinitionNewName:
+    Value: !Ref 'TaskDefinitionNew'
+    Export:
+      Name: !Join [':', [ !Ref 'AWS::StackName', 'TaskDefinitionNewName']]
+
+  TargetGroupNewName:
+    Value: !Ref 'TargetGroupNew'
+    Export:
+      Name: !Join [':', [ !Ref 'AWS::StackName', 'TargetGroupNewName']]
+

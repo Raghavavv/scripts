@@ -1,0 +1,34 @@
+[
+  {
+    "name": "notification-producer",
+    "image": "596849958460.dkr.ecr.${region}.amazonaws.com/notification-producer:${environment}",
+    "startTimeout": 300,
+    "stopTimeout": 100,
+    "logConfiguration": {
+      "logDriver": "awslogs",
+      "options": {
+        "awslogs-group": "${environment}_producer",
+        "awslogs-multiline-pattern": "'^ '",
+        "awslogs-region": "${region}",
+        "awslogs-stream-prefix": "ecs"
+      }
+    },
+    "portMappings": [
+      {
+        "hostPort": 8080,
+        "protocol": "tcp",
+        "containerPort": 8080
+      }
+    ],
+    "command": ["java","-jar","notification-producer-1.0-SNAPSHOT.war"],
+    "environment": [
+      {
+        "name": "SPRING_PROFILES_ACTIVE",
+        "value": "${environment}"
+      }
+    ],
+    "workingDirectory": "/root/bizom/",
+    "essential": true,
+    "taskRoleArn": "arn:aws:iam::596849958460:role/ecsTaskExecutionRole"
+  }
+]

@@ -1,0 +1,84 @@
+#. We have automated large part of our ECS infrastructure using terra-
+   form. Here is the tree structure of the terraform code base:
+
+│   └── terraform
+│       ├── deploy_apigateway.tf
+│       ├── deploy_config.tf
+│       ├── deploy_ell.tf
+│       ├── ecr.tf
+│       ├── ecs-cluster.tf
+│       ├── ecs.tf
+│       ├── files
+│       │   └── edit_deploy.sh
+│       ├── load_balancing.tf
+│       ├── providers.tf
+│       ├── task-definitions
+│       │   ├── access-service.json
+│       │   ├── apigateway.json
+│       │   ├── config.json
+│       │   ├── ell.json
+│       │   ├── generic-outlet-service.json
+│       │   ├── notification-consumer.json
+│       │   ├── notification-producer.json
+│       │   ├── retailer-module.json
+│       │   └── sshd.json
+│       ├── templates
+│       │   ├── deploy_apigateway.sh
+│       │   ├── deploy_config.sh
+│       │   ├── deploy_ell.sh
+│       │   ├── fetch_code_apigateway.sh
+│       │   ├── fetch_code_config.sh
+│       │   ├── fetch_code_ell.sh
+│       │   ├── pipelines.yml
+│       │   └── pipelines_apigateway.yml
+│       ├── variables.tf
+│       └── vpc.tf
+
+#. The features are as follows:
+
+NOTE: Please note, that the following features are not executed in the
+same manner listed below. The dependencies are solved by the terraform
+itself. The dependencies which terraform can not solve, are solved by
+custom code already included.
+
+1. We need to populate the "variables.tf" file, in order to pass the
+   value of the variables. For example, what will be the CIDR of the 
+   VPC, name of the ecs cluster, name of the load-balancer, CIDR of 
+   the subnets created in the VPC, list of services to be deployed,
+   security groups of the load-balancers etc.
+
+2. It first creates the VPC, creates the Internet Gateway, attaches it
+   to the VPC, creates the public and private sunets and configures the
+   routing table accordingly. It also enables the dns support in the
+   newly created VPC, so that we can use it while connecting through the
+   VPC peering connection.
+
+3. Then it creates the Elastic Container Repositories (ECR) for the
+   individual services. Name of the container repositories is defined in
+   the "variables.tf" file, as a list variable.
+
+4. Creates the security-group for the External application load balancer
+   launches the load-balancer and waits for it, until it is up and
+   running. Then it creates the target-groups for all the ECS services.
+   After that it configures the load-balancer with listener rules for
+   routing the services. For example, if the host header contains,
+   ell.dev, then forward the request to the ecs-dev-ell target group.
+
+5. It creates the task-definitions for each service from the template
+   json file, we have already kept in the "task-definitions" directory.
+
+6. Launches the new ECS cluster, as per name provided in the variables
+   file. Creates a service-discovery DNS namespace in the Route53 and
+   then adds all the security groups for each service to be deployed.
+   It then creates the individual services with a service-discovery DNS
+   for each service. For example, in "dev" environment, "ell" service
+   has "ell.dev:8080" service-discvoery endpoint. All the service
+   running in that environment can reach ell on this endpoint.
+
+NOTE: For launching a service inside the ECS cluster needs task-
+definittion, load-balancer target-group, security group for that service
+cluster-id etc. All these are created in separated files, and passed
+through the terraform variables dependencies. For example,
+registry_arn   = "${aws_service_discovery_service.retailer-module.arn}"
+This line is used while creating the new ECS service. This line gets the
+arn of the retailer-module's service discovery entry.

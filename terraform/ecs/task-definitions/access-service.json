@@ -1,0 +1,34 @@
+[
+  {
+    "name": "access-service",
+    "image": "596849958460.dkr.ecr.${region}.amazonaws.com/access-service:${environment}",
+    "startTimeout": 300,
+    "stopTimeout": 100,
+    "logConfiguration": {
+      "logDriver": "awslogs",
+      "options": {
+        "awslogs-group": "${environment}_access",
+        "awslogs-multiline-pattern": "'^ '",
+        "awslogs-region": "${region}",
+        "awslogs-stream-prefix": "ecs"
+      }
+    },
+    "portMappings": [
+      {
+        "hostPort": 9090,
+        "protocol": "tcp",
+        "containerPort": 9090
+      }
+    ],
+    "command": [ "java", "-jar", "/root/access-module-2.0.0.jar" ],
+    "environment": [
+      {
+        "name": "SPRING_PROFILES_ACTIVE",
+        "value": "${environment}"
+      }
+    ],
+    "workingDirectory": "/root/",
+    "essential": true,
+    "taskRoleArn": "arn:aws:iam::596849958460:role/ecsTaskExecutionRole"
+  }
+]

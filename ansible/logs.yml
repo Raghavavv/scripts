@@ -1,0 +1,33 @@
+---
+- hosts: all
+  become: true
+  tasks: 
+    - name: Adding elastic repository key
+      apt_key:
+        url: https://artifacts.elastic.co/GPG-KEY-elasticsearch
+        state: present
+    - name: Adding elastic package repository
+      apt_repository:
+        repo: deb https://artifacts.elastic.co/packages/oss-7.x/apt stable main
+        state: present
+        filename: elastic
+        update_cache: yes
+    - name: Installing the packages
+      apt:
+        pkg:
+          - apt-transport-https
+          - filebeat
+        state: latest
+        update_cache: yes
+    - name: Creating filebeat configuration
+      template:
+        src: filebeat.yml 
+        dest: /etc/filebeat/filebeat.yml
+    - name: Enable filebeat service on startup
+      systemd:
+        name: filebeat
+        enabled: true
+      notify: restart filebeat
+  handlers:
+    - name: restart filebeat
+      service: name=filebeat state=restarted

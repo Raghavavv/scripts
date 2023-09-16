@@ -1,0 +1,52 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ell 
+  namespace: devel-services
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ell 
+  namespace: devel-services
+  labels:
+    app: ell
+    eks.amazonaws.com/fargate-profile: kube-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ell
+      eks.amazonaws.com/fargate-profile: kube-system
+  template:
+    metadata:
+      labels:
+        app: ell
+        eks.amazonaws.com/fargate-profile: kube-system
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: kubernetes.io/os
+                operator: In
+                values:
+                - linux
+              - key: kubernetes.io/arch
+                operator: In
+                values:
+                - amd64
+                - arm64
+      serviceAccountName: ell
+      containers:
+      - name: ell
+        image: 596849958460.dkr.ecr.ap-south-1.amazonaws.com/ell:latest
+        ports:
+        - name: ell
+          containerPort: 8080
+        imagePullPolicy: IfNotPresent
+
+      nodeSelector:
+        kubernetes.io/os: linux

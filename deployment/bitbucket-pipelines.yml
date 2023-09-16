@@ -1,0 +1,95 @@
+pipelines:
+
+  branches:
+    development:
+      - step:
+          size: 2x
+          name: Deploy to dev (test) environment
+          image:
+            name: 596849958460.dkr.ecr.ap-southeast-1.amazonaws.com/bizom:latest
+            aws:
+              access-key: $AWS_ACCESS_KEY_ID
+              secret-key: $AWS_SECRET_ACCESS_KEY
+          caches:
+            - maven
+            - docker
+          deployment: test
+          services:
+             - docker
+          script:
+            - $(aws ecr get-login --no-include-email --region ap-southeast-1) && ops/deploy.sh "dev" "dev" "1" $WEBHOOK_URL $DEPLOY_SERVICE
+          after-script:
+             - ops/alert.sh
+
+  custom:
+    deploy-to-dev:
+      - variables:
+        - name: DEPLOY_SERVICE
+      - step:
+          size: 2x
+          name: Deploy to dev (test) environment
+          image:
+            name: 596849958460.dkr.ecr.ap-southeast-1.amazonaws.com/bizom:latest
+            aws:
+              access-key: $AWS_ACCESS_KEY_ID
+              secret-key: $AWS_SECRET_ACCESS_KEY
+          caches:
+            - maven
+            - docker
+          deployment: test
+          services:
+             - docker
+          script:
+            - $(aws ecr get-login --no-include-email --region ap-southeast-1) && ops/deploy.sh "dev" "dev" "1" $WEBHOOK_URL $DEPLOY_SERVICE
+          after-script:
+            - ops/alert.sh
+
+    deploy-to-staging:
+      - variables:
+        - name: DEPLOY_SERVICE
+      - step:
+          size: 2x
+          name: Deploy to staging
+          image:
+            name: 596849958460.dkr.ecr.ap-southeast-1.amazonaws.com/bizom:latest
+            aws:
+              access-key: $AWS_ACCESS_KEY_ID
+              secret-key: $AWS_SECRET_ACCESS_KEY
+          caches:
+            - maven
+            - docker
+          deployment: staging
+          services:
+            - docker
+          script:
+            - $(aws ecr get-login --no-include-email --region ap-southeast-1) && ops/deploy.sh "staging" "staging" "1" $WEBHOOK_URL $DEPLOY_SERVICE
+          after-script:
+            - ops/alert.sh
+
+    deploy-to-production:
+      - variables:
+        - name: DEPLOY_SERVICE
+      - step:
+          size: 2x
+          name: Deploy to production
+          image:
+            name: 596849958460.dkr.ecr.ap-southeast-1.amazonaws.com/bizom:latest
+            aws:
+              access-key: $AWS_ACCESS_KEY_ID
+              secret-key: $AWS_SECRET_ACCESS_KEY
+          caches:
+            - maven
+            - docker
+          deployment: production
+          services:
+            - docker
+          script:
+            - $(aws ecr get-login --no-include-email --region ap-southeast-1)
+            - ops/deploy.sh "prod" "prod" "1" $WEBHOOK_URL $DEPLOY_SERVICE
+          after-script:
+            - ops/alert.sh
+
+definitions:
+  services:
+    docker:
+      memory: 5120

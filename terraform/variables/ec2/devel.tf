@@ -1,0 +1,16 @@
+environment                 = "devel"
+region                      = "ap-south-1"
+ami_id                      = "ami-08795883c7b4b7140"
+instance_type               = "t4g.medium"
+azs                         = ["ap-south-1a"]
+vpc_cidr                    = ["10.77.0.0/16"]
+vpc_id                      = "vpc-06a82ddb2aad411e6"
+server_name                 = "mob_staging_ell"
+monitoring                  = false
+enable_dns_hostnames        = true
+associate_public_ip_address = false
+ebs_optimized               = false
+keypair_to_download	    = true
+sg_cidr_blocks		    = ["52.74.184.231/32", "10.200.0.0/16"]
+number_of_instances	    = 1
+costcentre		    = "raghava"

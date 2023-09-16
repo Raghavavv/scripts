@@ -1,0 +1,583 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": "-- Grafana --",
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "gnetId": null,
+  "graphTooltip": 0,
+  "id": 6,
+  "links": [],
+  "panels": [
+    {
+      "aliasColors": {},
+      "bars": false,
+      "dashLength": 10,
+      "dashes": false,
+      "datasource": "CloudWatch",
+      "fill": 0,
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "id": 2,
+      "legend": {
+        "avg": false,
+        "current": false,
+        "max": false,
+        "min": false,
+        "show": true,
+        "total": false,
+        "values": false
+      },
+      "lines": true,
+      "linewidth": 1,
+      "links": [],
+      "nullPointMode": "null",
+      "percentage": false,
+      "pointradius": 5,
+      "points": false,
+      "renderer": "flot",
+      "seriesOverrides": [],
+      "spaceLength": 10,
+      "stack": false,
+      "steppedLine": false,
+      "targets": [
+        {
+          "alias": "production",
+          "dimensions": {
+            "LoadBalancer": "app/prodvpc/a2fa2fecdb6cd041"
+          },
+          "expression": "",
+          "highResolution": false,
+          "id": "",
+          "metricName": "TargetResponseTime",
+          "namespace": "AWS/ApplicationELB",
+          "period": "",
+          "refId": "B",
+          "region": "default",
+          "returnData": false,
+          "statistics": [
+            "Average"
+          ]
+        },
+        {
+          "alias": "reports",
+          "dimensions": {
+            "LoadBalancer": "app/ellvpc/502ebe237ff21d6e"
+          },
+          "expr": "",
+          "expression": "",
+          "format": "time_series",
+          "highResolution": false,
+          "id": "",
+          "intervalFactor": 1,
+          "metricName": "TargetResponseTime",
+          "namespace": "AWS/ApplicationELB",
+          "period": "",
+          "refId": "A",
+          "region": "default",
+          "returnData": false,
+          "statistics": [
+            "Average"
+          ]
+        },
+        {
+          "alias": "ecs-prod-cluster-external",
+          "dimensions": {
+            "LoadBalancer": "app/ecs-prod-cluster-external/25bc585d87b33ce5"
+          },
+          "expression": "",
+          "highResolution": false,
+          "id": "",
+          "metricName": "TargetResponseTime",
+          "namespace": "AWS/ApplicationELB",
+          "period": "",
+          "refId": "C",
+          "region": "default",
+          "returnData": false,
+          "statistics": [
+            "Average"
+          ]
+        }
+      ],
+      "thresholds": [],
+      "timeFrom": null,
+      "timeRegions": [],
+      "timeShift": null,
+      "title": "TargetResponseTime",
+      "tooltip": {
+        "shared": true,
+        "sort": 0,
+        "value_type": "individual"
+      },
+      "type": "graph",
+      "xaxis": {
+        "buckets": null,
+        "mode": "time",
+        "name": null,
+        "show": true,
+        "values": []
+      },
+      "yaxes": [
+        {
+          "format": "s",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        },
+        {
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        }
+      ],
+      "yaxis": {
+        "align": false,
+        "alignLevel": null
+      }
+    },
+    {
+      "aliasColors": {},
+      "bars": false,
+      "dashLength": 10,
+      "dashes": false,
+      "datasource": "CloudWatch",
+      "fill": 0,
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "id": 4,
+      "legend": {
+        "avg": false,
+        "current": false,
+        "max": false,
+        "min": false,
+        "show": true,
+        "total": false,
+        "values": false
+      },
+      "lines": true,
+      "linewidth": 1,
+      "links": [],
+      "nullPointMode": "null",
+      "percentage": false,
+      "pointradius": 5,
+      "points": false,
+      "renderer": "flot",
+      "seriesOverrides": [],
+      "spaceLength": 10,
+      "stack": false,
+      "steppedLine": false,
+      "targets": [
+        {
+          "alias": "production",
+          "dimensions": {
+            "LoadBalancer": "app/prodvpc/a2fa2fecdb6cd041"
+          },
+          "expression": "",
+          "highResolution": false,
+          "id": "",
+          "metricName": "HTTPCode_Target_4XX_Count",
+          "namespace": "AWS/ApplicationELB",
+          "period": "",
+          "refId": "B",
+          "region": "default",
+          "returnData": false,
+          "statistics": [
+            "SampleCount"
+          ]
+        },
+        {
+          "alias": "reports",
+          "dimensions": {
+            "LoadBalancer": "app/ellvpc/502ebe237ff21d6e"
+          },
+          "expr": "",
+          "expression": "",
+          "format": "time_series",
+          "highResolution": false,
+          "id": "",
+          "intervalFactor": 1,
+          "metricName": "HTTPCode_Target_4XX_Count",
+          "namespace": "AWS/ApplicationELB",
+          "period": "",
+          "refId": "A",
+          "region": "default",
+          "returnData": false,
+          "statistics": [
+            "SampleCount"
+          ]
+        },
+        {
+          "alias": "ecs-prod-cluster-external",
+          "dimensions": {
+            "LoadBalancer": "app/ecs-prod-cluster-external/25bc585d87b33ce5"
+          },
+          "expression": "",
+          "highResolution": false,
+          "id": "",
+          "metricName": "HTTPCode_ELB_4XX_Count",
+          "namespace": "AWS/ApplicationELB",
+          "period": "",
+          "refId": "C",
+          "region": "default",
+          "returnData": false,
+          "statistics": [
+            "Average"
+          ]
+        }
+      ],
+      "thresholds": [],
+      "timeFrom": null,
+      "timeRegions": [],
+      "timeShift": null,
+      "title": "HTTPCode_Target_4XX_Count",
+      "tooltip": {
+        "shared": true,
+        "sort": 0,
+        "value_type": "individual"
+      },
+      "type": "graph",
+      "xaxis": {
+        "buckets": null,
+        "mode": "time",
+        "name": null,
+        "show": true,
+        "values": []
+      },
+      "yaxes": [
+        {
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        },
+        {
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        }
+      ],
+      "yaxis": {
+        "align": false,
+        "alignLevel": null
+      }
+    },
+    {
+      "aliasColors": {},
+      "bars": false,
+      "dashLength": 10,
+      "dashes": false,
+      "datasource": "CloudWatch",
+      "fill": 0,
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 0,
+        "y": 6
+      },
+      "id": 6,
+      "legend": {
+        "avg": false,
+        "current": false,
+        "max": false,
+        "min": false,
+        "show": true,
+        "total": false,
+        "values": false
+      },
+      "lines": true,
+      "linewidth": 1,
+      "links": [],
+      "nullPointMode": "null",
+      "percentage": false,
+      "pointradius": 5,
+      "points": false,
+      "renderer": "flot",
+      "seriesOverrides": [],
+      "spaceLength": 10,
+      "stack": false,
+      "steppedLine": false,
+      "targets": [
+        {
+          "alias": "reports",
+          "dimensions": {
+            "LoadBalancer": "app/ellvpc/502ebe237ff21d6e"
+          },
+          "expression": "",
+          "highResolution": false,
+          "id": "",
+          "metricName": "RequestCount",
+          "namespace": "AWS/ApplicationELB",
+          "period": "",
+          "refId": "B",
+          "region": "default",
+          "returnData": false,
+          "statistics": [
+            "SampleCount"
+          ]
+        },
+        {
+          "alias": "production",
+          "dimensions": {
+            "LoadBalancer": "app/prodvpc/a2fa2fecdb6cd041"
+          },
+          "expr": "",
+          "expression": "",
+          "format": "time_series",
+          "highResolution": false,
+          "id": "",
+          "intervalFactor": 1,
+          "metricName": "RequestCount",
+          "namespace": "AWS/ApplicationELB",
+          "period": "",
+          "refId": "A",
+          "region": "default",
+          "returnData": false,
+          "statistics": [
+            "SampleCount"
+          ]
+        },
+        {
+          "alias": "ecs-prod-cluster-external",
+          "dimensions": {
+            "LoadBalancer": "app/ecs-prod-cluster-external/25bc585d87b33ce5"
+          },
+          "expression": "",
+          "highResolution": false,
+          "id": "",
+          "metricName": "RequestCount",
+          "namespace": "AWS/ApplicationELB",
+          "period": "",
+          "refId": "C",
+          "region": "default",
+          "returnData": false,
+          "statistics": [
+            "Average"
+          ]
+        }
+      ],
+      "thresholds": [],
+      "timeFrom": null,
+      "timeRegions": [],
+      "timeShift": null,
+      "title": "Request Count",
+      "tooltip": {
+        "shared": true,
+        "sort": 0,
+        "value_type": "individual"
+      },
+      "type": "graph",
+      "xaxis": {
+        "buckets": null,
+        "mode": "time",
+        "name": null,
+        "show": true,
+        "values": []
+      },
+      "yaxes": [
+        {
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        },
+        {
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        }
+      ],
+      "yaxis": {
+        "align": false,
+        "alignLevel": null
+      }
+    },
+    {
+      "aliasColors": {},
+      "bars": false,
+      "dashLength": 10,
+      "dashes": false,
+      "datasource": "CloudWatch",
+      "fill": 0,
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 12,
+        "y": 6
+      },
+      "id": 8,
+      "legend": {
+        "avg": false,
+        "current": false,
+        "max": false,
+        "min": false,
+        "show": true,
+        "total": false,
+        "values": false
+      },
+      "lines": true,
+      "linewidth": 1,
+      "links": [],
+      "nullPointMode": "null",
+      "percentage": false,
+      "pointradius": 5,
+      "points": false,
+      "renderer": "flot",
+      "seriesOverrides": [],
+      "spaceLength": 10,
+      "stack": false,
+      "steppedLine": false,
+      "targets": [
+        {
+          "alias": "production",
+          "dimensions": {
+            "LoadBalancer": "app/prodvpc/a2fa2fecdb6cd041"
+          },
+          "expression": "",
+          "highResolution": false,
+          "id": "",
+          "metricName": "HTTPCode_Target_5XX_Count",
+          "namespace": "AWS/ApplicationELB",
+          "period": "",
+          "refId": "B",
+          "region": "default",
+          "returnData": false,
+          "statistics": [
+            "SampleCount"
+          ]
+        },
+        {
+          "alias": "reports",
+          "dimensions": {
+            "LoadBalancer": "app/ellvpc/502ebe237ff21d6e"
+          },
+          "expr": "",
+          "expression": "",
+          "format": "time_series",
+          "highResolution": false,
+          "id": "",
+          "intervalFactor": 1,
+          "metricName": "HTTPCode_Target_5XX_Count",
+          "namespace": "AWS/ApplicationELB",
+          "period": "",
+          "refId": "A",
+          "region": "default",
+          "returnData": false,
+          "statistics": [
+            "SampleCount"
+          ]
+        }
+      ],
+      "thresholds": [],
+      "timeFrom": null,
+      "timeRegions": [],
+      "timeShift": null,
+      "title": "HTTPCode_Target_5XX_Count",
+      "tooltip": {
+        "shared": true,
+        "sort": 0,
+        "value_type": "individual"
+      },
+      "type": "graph",
+      "xaxis": {
+        "buckets": null,
+        "mode": "time",
+        "name": null,
+        "show": true,
+        "values": []
+      },
+      "yaxes": [
+        {
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        },
+        {
+          "format": "short",
+          "label": null,
+          "logBase": 1,
+          "max": null,
+          "min": null,
+          "show": true
+        }
+      ],
+      "yaxis": {
+        "align": false,
+        "alignLevel": null
+      }
+    }
+  ],
+  "schemaVersion": 16,
+  "style": "dark",
+  "tags": [],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-3h",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": [
+      "5s",
+      "10s",
+      "30s",
+      "1m",
+      "5m",
+      "15m",
+      "30m",
+      "1h",
+      "2h",
+      "1d"
+    ],
+    "time_options": [
+      "5m",
+      "15m",
+      "1h",
+      "6h",
+      "12h",
+      "24h",
+      "2d",
+      "7d",
+      "30d"
+    ]
+  },
+  "timezone": "",
+  "title": "Load Balancing Stats",
+  "uid": "Gcqv9Irik",
+  "version": 3
+}

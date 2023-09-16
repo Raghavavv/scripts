@@ -1,0 +1,11 @@
+environment         = "devel"
+eks_subnets         = ["subnet-000e074cd9222d0f0", "subnet-09a666704fe9dfd51", "subnet-040718dac7b656490"]
+instance_types      = ["t3.medium"]
+disk_size           = 20
+eks_profile_fargate = true 
+region              = "ap-south-1"
+appname             = "config"
+image_repo	    = "596849958460.dkr.ecr.ap-south-1.amazonaws.com/config:latest"
+container_port      = 8102
+cluster_version     = 1.25
+costcentre	    = "raghava"

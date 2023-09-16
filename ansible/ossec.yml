@@ -1,0 +1,35 @@
+---
+- hosts: all
+  become: true
+  vars:
+    ossec_server_host: 52.221.64.17
+    ossec_server_port: 1515
+    ossec_config: /var/ossec/etc/ossec.conf
+  tasks:
+    - name: Adding ossec apt-key
+      apt_key:
+        url: https://www.atomicorp.com/RPM-GPG-KEY.atomicorp.txt
+        state: present
+    - name: Adding ossec package repository
+      apt_repository:
+        repo: deb https://updates.atomicorp.com/channels/atomic/ubuntu bionic main
+        state: present
+        filename: ossec
+        update_cache: yes
+    - name: Installing ossec-hids-agent package
+      apt: name=ossec-hids-agent state=latest
+    - name: Create the agent configuration
+      template: src={{ item.src }} dest={{ item.dest }}
+      with_items:
+        - { src: 'ossec.conf', dest: '{{ ossec_config }}' }
+      notfiy: restart ossec
+    - name: Register ossec-client on the server
+      shell: /var/ossec/bin/agent-auth -m {{ ossec_server_host }} -p {{ ossec_server_port }}
+      notify: restart ossec
+    - name: Enable ossec service on startup
+      systemd:
+        name: ossec
+        enabled: true
+  handlers:
+    - name: restart ossec
+      service: name=ossec state=restarted

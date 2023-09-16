@@ -1,0 +1,34 @@
+[
+  {
+    "name": "outlet-service",
+    "image": "596849958460.dkr.ecr.${region}.amazonaws.com/outlet-service:${environment}",
+    "startTimeout": 300,
+    "stopTimeout": 100,
+    "logConfiguration": {
+      "logDriver": "awslogs",
+      "options": {
+        "awslogs-group": "${environment}_outlet_service",
+        "awslogs-multiline-pattern": "'^ '",
+        "awslogs-region": "${region}",
+        "awslogs-stream-prefix": "ecs"
+      }
+    },
+    "portMappings": [
+      {
+        "hostPort": 9093,
+        "protocol": "tcp",
+        "containerPort": 9093
+      }
+    ],
+    "command": ["java","-jar","generic-outlet-service-2.0-SNAPSHOT.jar"],
+    "environment": [
+      {
+        "name": "SPRING_PROFILES_ACTIVE",
+        "value": "${environment}"
+      }
+    ],
+    "workingDirectory": "/root/bizom/",
+    "essential": true,
+    "taskRoleArn": "arn:aws:iam::596849958460:role/ecsTaskExecutionRole"
+  }
+]
