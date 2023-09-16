@@ -1,0 +1,150 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Deploy a service on AWS Fargate, hosted in a private subnet, behind a private load balancer.
+Parameters:
+  EnvironmentName:
+    Description: An environment name that will be prefixed to resource names
+    Type: String
+    Default: devel
+
+  ServiceName:
+    Type: String
+    Default: config
+    Description: A name for the service which we are going to deploy
+
+  ImageUrl:
+    Type: String
+    Default: 596849958460.dkr.ecr.ap-south-1.amazonaws.com/config:devel-84
+    Description: The url of a docker image that contains the application process that
+                 will handle the traffic for this service
+  ContainerPort:
+    Type: Number
+    Default: 8102
+    Description: What port number the application inside the docker container is binding to
+
+  ContainerCpu:
+    Type: Number
+    Default: 256
+    Description: How much CPU to give the container. 1024 is 1 CPU
+
+  ContainerMemory:
+    Type: Number
+    Default: 512
+    Description: How much memory in megabytes to give the container
+
+  DesiredCount:
+    Type: Number
+    Default: 1
+    Description: How many copies of the service task to run
+      
+  Path:
+    Type: String
+    Default: "*"
+    Description: A path on the public load balancer that this service
+                 should be connected to. Use * to send all load balancer
+                 traffic to this service.
+  Priority:
+    Type: Number
+    Default: 1
+    Description: The priority for the routing rule added to the load balancer.
+                 This only applies if your have multiple services which have been
+                 assigned to different paths on the load balancer.
+
+Resources:
+
+################ The Task definition for container to run and Resources Required ####################
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub ${EnvironmentName}-${ServiceName}-TD
+      Cpu: !Ref 'ContainerCpu'
+      Memory: !Ref 'ContainerMemory'
+      NetworkMode: "awsvpc"
+
+      RequiresCompatibilities:
+        - "FARGATE"
+      ExecutionRoleArn:
+        Fn::ImportValue:
+          !Join [':', [ !Ref 'AWS::StackName', 'ECSTaskExecutionRole']]
+      TaskRoleArn:
+        Fn::ImportValue:
+          !Join [':', [ !Ref 'AWS::StackName', 'ECSTaskExecutionRole']]
+
+      ContainerDefinitions:
+        - Name: !Ref 'ServiceName'
+          Cpu: !Ref 'ContainerCpu'
+          Memory: !Ref 'ContainerMemory'
+          Image: !Ref 'ImageUrl'
+          PortMappings:
+            - ContainerPort: !Ref 'ContainerPort'
+              HostPort: !Ref 'ContainerPort'
+              Protocol: tcp
+
+##### Service to deploy From ECR Repositories, run multiple copies of a type of task, and gather up their logs and metrics, as well as monitor the number of running tasks and replace any that have crashed ##############################
+  Service:
+    Type: AWS::ECS::Service
+    DependsOn:
+      - LoadBalancerListnerRule
+    Properties:
+      ServiceName: !Ref 'ServiceName'
+      Cluster:
+        Fn::ImportValue:
+          !Join [':', [ !Ref 'AWS::StackName', 'ClusterName' ]]
+      LaunchType: FARGATE
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 75
+      DesiredCount: !Ref 'DesiredCount'
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          SecurityGroups:
+            Fn::ImportValue:
+              !Join [':', [ !Ref 'AWS::StackName', 'FargateContainerSecurityGroupID']]
+
+          Subnets:
+            Fn::ImportValue:
+              !Join [':', [ !Ref 'AWS::StackName', 'PrivateSubnetOne']] 
+            Fn::ImportValue:
+              !Join [':', [ !Ref 'AWS::StackName', 'PrivateSubnetTwo']]
+            Fn::ImportValue:
+              !Join [':', [ !Ref 'AWS::StackName', 'PrivateSubnetThree']]
+
+      TaskDefinition: !Ref 'TaskDefinition'
+      LoadBalancers:
+        - ContainerName: !Ref 'ServiceName'
+          ContainerPort: !Ref 'ContainerPort'
+          TargetGroupArn: !Ref 'TargetGroup'
+#### This target group This is used for keeping track of all the tasks, and what IP addresses / port numbers they have. It can automatically distribute traffic across all the targets. #####
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub ${EnvironmentName}-${ServiceName}-ecs-TG
+      TargetType: ip
+      HealthCheckIntervalSeconds: 60
+      HealthCheckPath: /actuator
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 30
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 5
+      Matcher:
+        HttpCode: 200-499
+      Port: !Ref 'ContainerPort'
+      Protocol: HTTP
+      VpcId:
+        Fn::ImportValue:
+          !Join [':', [ !Ref 'AWS::StackName', 'VpcId']] 
+
+
+  LoadBalancerListnerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      Actions:
+        - TargetGroupArn: !Ref 'TargetGroup'
+          Type: 'forward'
+      Conditions:
+        - Field: path-pattern
+          Values: [!Ref 'Path']
+      ListenerArn:
+        Fn::ImportValue:
+          !Join [':', [ !Ref 'AWS::StackName', 'LoadBalancerListener' ]]
+      Priority: !Ref 'Priority'

@@ -1,0 +1,337 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: The EKS Cluster Creation With Fargate profile Compute resource
+Parameters:
+
+  EnvironmentName:
+    Type: String
+    Default: devel
+    Description: The name of the Environment like Dev, Staging, Production etc...
+  Version:
+    Type: Number
+    Default: 1.26
+    Description: The verion of the EKS cluster.
+
+  VpcId:
+    Type: String
+    Default: vpc-0c5993d2d307caa24
+    Description: The CIDR range for the VPC. This should be a valid private (RFC 1918) CIDR range.
+  PrivateSubnet1:
+    Type: String
+    Default: subnet-040718dac7b656490
+    Description: CidrBlock for private subnet 1 within the VPC
+  PrivateSubnet2:
+    Type: String
+    Default: subnet-09a666704fe9dfd51
+    Description: CidrBlock for private subnet 2 within the VPC
+  PrivateSubnet3:
+    Type: String
+    Default: subnet-000e074cd9222d0f0
+    Description: CidrBlock for private subnet 3 within the VPC    
+
+  Priority:
+    Type: Number
+    Default: 1
+    Description: The priority for the routing rule added to the load balancer.
+                 This only applies if your have multiple services which have been
+                 assigned to different paths on the load balancer.
+
+  Path:
+    Type: String
+    Default: "*"
+    Description: A path on the public load balancer that this service
+                 should be connected to. Use * to send all load balancer
+                 traffic to this service.
+  ContainerPort:
+    Type: Number
+    Default: 8080
+    Description: The port number for the service which run on.
+
+##############################################################################################
+Resources:
+################## Security Groups, IAM Roles and policies for Load Balancer creation ########### 
+
+  ControlPlaneSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Cluster communication with worker nodes
+      VpcId: !Ref VpcId
+
+  FargateEKSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Access to the Fargate containers
+      VpcId: !Ref 'VpcId'
+  EKSSecurityGroupIngressFromSelf:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      Description: Ingress from other containers in the same security group
+      GroupId: !Ref 'FargateEKSSecurityGroup'
+      IpProtocol: -1
+      SourceSecurityGroupId: !Ref 'FargateEKSSecurityGroup'
+  EKSSecurityGroupIngressFromALB:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      Description: Ingress from the ALB
+      GroupId: !Ref 'FargateEKSSecurityGroup'
+      IpProtocol: -1
+      SourceSecurityGroupId: !Ref 'EKSLoadBalancerSG'
+
+  EKSLoadBalancerSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Access to the internal load balancer
+      VpcId: !Ref 'VpcId'
+  LoadBalancerIngressFromEKS:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      Description: Only accept traffic from a container in the fargate container security group
+      GroupId: !Ref 'EKSLoadBalancerSG'
+      IpProtocol: -1
+      SourceSecurityGroupId: !Ref 'FargateEKSSecurityGroup'
+
+########################## Load Balancer Creation with Listener Rule ##################################
+
+  EKSLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub ${EnvironmentName}-eks-ALB
+      Scheme: internal
+      LoadBalancerAttributes:
+      - Key: idle_timeout.timeout_seconds
+        Value: '30'
+      Subnets:
+        # This load balancer is put into the private subnet, so that there is no
+        # route for the public to even be able to access the private load balancer.
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+        - !Ref PrivateSubnet3
+      SecurityGroups: [!Ref 'EKSLoadBalancerSG']
+  EKSLoadBalancerListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    DependsOn:
+      - EKSLoadBalancer
+    Properties:
+      DefaultActions:
+        - TargetGroupArn: !Ref 'TargetGroupDummy'
+          Type: 'forward'
+      LoadBalancerArn: !Ref 'EKSLoadBalancer'
+      Port: 80
+      Protocol: HTTP
+
+#### Target group is used to setup the ALB to distribute traffic across all the targets #####
+  TargetGroupDummy:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub ${EnvironmentName}-eks-Dummy-TG
+      TargetType: ip
+      HealthCheckIntervalSeconds: 30
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 20
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 5
+      Matcher:
+        HttpCode: 200-499
+      Port: !Ref 'ContainerPort'
+      Protocol: HTTP
+      VpcId: !Ref 'VpcId'
+
+  EKSLoadBalancerListnerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      Actions:
+        - TargetGroupArn: !Ref 'TargetGroupDummy'
+          Type: 'forward'
+      Conditions:
+        - Field: path-pattern
+          Values: [!Ref 'Path']
+      ListenerArn: !Ref 'EKSLoadBalancerListener'
+      Priority: !Ref 'Priority'
+########################## EKS Cluster Creation ####################################
+
+  EKSCluster:
+    Type: AWS::EKS::Cluster
+    Properties:
+      Name: !Sub ${EnvironmentName}-Cluster
+      Version: !Ref Version
+      RoleArn:
+        "Fn::GetAtt": ["EKSClusterIAMRole", "Arn"]
+      ResourcesVpcConfig:
+        SecurityGroupIds:
+          - !Ref ControlPlaneSecurityGroup
+        SubnetIds:
+          - !Ref PrivateSubnet1
+          - !Ref PrivateSubnet2
+          - !Ref PrivateSubnet3
+        EndpointPublicAccess: true
+        EndpointPrivateAccess: true
+     #  PublicAccessCidrs: [ "PublicIp/32" ]
+      Logging:
+        ClusterLogging:
+          EnabledTypes:
+            - Type: api
+            - Type: audit
+      Tags:
+        - Key: "Name"
+          Value: !Sub ${EnvironmentName}-Cluster 
+
+    DependsOn: [EKSClusterIAMRole, AmazonEKSClusterCloudWatchMetricsPolicy, AmazonEKSClusterNLBPolicy, ControlPlaneSecurityGroup]
+
+####### IAM Policies and Roles to EKS service to assume role to  AWS Account to help manage the associated resources #######
+    
+  EKSClusterIAMRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - eks.amazonaws.com
+                - eks-fargate-pods.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      RoleName: !Sub ${EnvironmentName}-EKSClusterIAMRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEKSClusterPolicy
+        - arn:aws:iam::aws:policy/AmazonEKSServicePolicy
+        - arn:aws:iam::aws:policy/AmazonEKSVPCResourceController
+
+  AmazonEKSClusterCloudWatchMetricsPolicy:  
+    Type: 'AWS::IAM::Policy'
+    Properties:
+      PolicyName: "AmazonEKSClusterCloudWatchMetricsPolicy"
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: 'cloudwatch:PutMetricData'
+            Resource: '*'
+      Roles:
+        - !Ref EKSClusterIAMRole
+
+  AmazonEKSClusterNLBPolicy:
+    Type: 'AWS::IAM::Policy'
+    Properties:
+      PolicyName: "AmazonEKSClusterNLBPolicy"
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: 
+              - 'elasticloadbalancing:*'
+              - 'ec2:CreateSecurityGroup'
+              - 'ec2:Describe*'
+            Resource: '*'
+      Roles:
+        - !Ref EKSClusterIAMRole
+
+
+####################### Fargate Profile Creation ###############################
+
+  EKSFargateProfile:
+    Type: 'AWS::EKS::FargateProfile'
+    Properties:
+      FargateProfileName: !Sub ${EnvironmentName}-fg-profile
+      ClusterName: !Ref EKSCluster
+      PodExecutionRoleArn:
+        "Fn::GetAtt": ["FGIAMRole", "Arn"]
+      Subnets:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+        - !Ref PrivateSubnet3
+      Selectors:
+        - Labels:
+            - Key: !Sub ${EnvironmentName}-services
+              Value: !Sub ${EnvironmentName}-services
+          Namespace: !Sub ${EnvironmentName}-services
+        - Labels:
+            - Key: kube-system
+              Value: kube-system
+          Namespace: kube-system
+
+  FGIAMRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - eks-fargate-pods.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      RoleName: !Sub ${EnvironmentName}-EKSClusterFGIAMRole
+      ManagedPolicyArns: 
+        - arn:aws:iam::aws:policy/AmazonEKSFargatePodExecutionRolePolicy
+
+############# OIDC IDentity Provider #########################################
+
+  EKSIdpConfig:
+    DependsOn: EKSFargateProfile
+    Type: AWS::EKS::IdentityProviderConfig
+    Properties:
+      ClusterName: !Ref EKSCluster
+      IdentityProviderConfigName: !Sub ${EnvironmentName}-cluster-idpconfig
+      Type: oidc
+      Oidc:
+        ClientId: "Kubernetes"
+        IssuerUrl: "https://token.actions.githubusercontent.com"
+
+####################################### Outputs ###########################################
+Outputs:
+  SecurityGroups:
+    Description: Security group for the cluster control plane communication with worker nodes
+    Value: !Join [ ",", [ !Ref ControlPlaneSecurityGroup ] ]
+
+  ClusterName:
+    Description: The name of the ECS cluster
+    Value: !Ref 'EKSCluster'
+    Export:
+      Name: !Join [ ':', [ !Ref 'AWS::StackName', 'ClusterName' ] ]
+
+  FargateProfileName:
+    Description: Name of the Fargate profile
+    Value: !Ref 'EKSFargateProfile'
+    Export:
+      Name: !Join [ ':', [ !Ref 'AWS::StackName', 'FargateProfileName' ] ]
+
+  ALBListnerRule:
+    Value: !Ref 'EKSLoadBalancerListnerRule'
+    Export:
+      Name: !Join [':', [ !Ref 'AWS::StackName', 'ALBListnerRule']]
+  LoadBalancerDNS:
+    Description: The url of the internal load balancer
+    Value: !Ref 'EKSLoadBalancer'
+    Export:
+      Name: !Join [ ':', [ !Ref 'AWS::StackName', 'LoadBalancerDNS' ]]
+  ALBListener:
+    Description: The ARN of the private load balancer's Listener
+    Value: !Ref 'EKSLoadBalancerListener'
+    Export:
+      Name: !Join [ ':', [ !Ref 'AWS::StackName', 'ALBListener' ]]
+  FargateEKSSecurityGroupID:
+    Description: A security group used to allow Fargate containers to receive traffic
+    Value: !Ref 'FargateEKSSecurityGroup'
+    Export:
+      Name: !Join [ ':', [ !Ref 'AWS::StackName', 'FargateEKSSecurityGroupID' ]]
+
+  VPCID:
+    Value: !Ref 'VpcId'
+    Export:
+      Name: !Join [':', [ !Ref 'AWS::StackName', 'VpcId']]
+  Subnet1:
+    Value: !Ref 'PrivateSubnet1'
+    Export:
+      Name: !Join [':', [ !Ref 'AWS::StackName', 'Subnet1']]
+  Subnet2:
+    Value: !Ref 'PrivateSubnet2'
+    Export:
+      Name: !Join [':', [ !Ref 'AWS::StackName', 'Subnet2']]
+  Subnet3:
+    Value: !Ref 'PrivateSubnet3'
+    Export:
+      Name: !Join [':', [ !Ref 'AWS::StackName', 'Subnet3']]

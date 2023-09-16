@@ -1,0 +1,179 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Enable Autoscaling (TargetScaling) for ECS services with IAM role dependency.
+Parameters:
+
+  EnvironmentName:
+    Type: String
+    Default: devel
+    Description: The name of the Environment like Dev, Staging, Production etc...
+
+  ClusterName:
+    Type: String
+    Default: devel-cluster
+    Description: The Nmae of the ECS Cluster
+  VpcId:
+    Description: The VPC ID
+    Type: String
+    Default: vpc-0236a53fffc25de35
+
+  PrivateSubnetOne:
+    Description: The First Private Subnet ID
+    Type: String
+    Default: subnet-098e65f35e91412c2
+  PrivateSubnetTwo:
+    Description: The Second Private Subnet ID
+    Type: String
+    Default: subnet-0548980c756958ec2
+  PrivateSubnetThree:
+    Description: The Third Private Subnet ID
+    Type: String
+    Default: subnet-0bb5218626088d807
+
+  SecurityGroupID:
+    Description: The Security Group ID..
+    Type: String
+    Default: sg-021049b2640474db2
+
+  ECSTaskExecutionRole:
+    Description: (Optional) An IAM role to give the service's containers if the code within needs to
+                 access other AWS resources like S3 buckets, DynamoDB tables, etc
+    Type: String
+    Default: arn:aws:iam::596849958460:role/ecsTaskExecutionRole
+
+  ServiceName:
+    Type: String
+    Default: config
+    Description: Name of the service
+
+  ImageUrl:
+    Type: String
+    Default: 596849958460.dkr.ecr.ap-south-1.amazonaws.com/config:devel-84
+    Description: The url of a docker image that contains the application process that
+                 will handle the traffic for this service
+  ContainerPort:
+    Type: Number
+    Default: 8102
+    Description: What port number the application inside the docker container is binding to
+  ContainerCpu:
+    Type: Number
+    Default: 256
+    Description: How much CPU to give the container. 1024 is 1 CPU
+  ContainerMemory:
+    Type: Number
+    Default: 1024
+    Description: How much memory in megabytes to give the container
+  DesiredCount:
+    Type: Number
+    Default: 1
+    Description: How many copies of the service task to run
+  Path:
+    Type: String
+    Default: "*"
+    Description: A path on the public load balancer that this service
+                 should be connected to. Use * to send all load balancer
+                 traffic to this service.
+  TGArn1:
+    Type: String
+    Default: arn:aws:elasticloadbalancing:ap-south-1:596849958460:targetgroup/devel-ECS-Dummy-TG/45e8393a0e1f493d
+
+  Priority:
+    Type: Number
+    Default: 1
+    Description: The priority for the routing rule added to the load balancer.
+                 This only applies if your have multiple services which have been
+                 assigned to different paths on the load balancer.
+
+
+Resources:
+
+################ The Task definition for container to run and Resources Required ####################
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Ref 'ServiceName'
+      Cpu: !Ref 'ContainerCpu'
+      Memory: !Ref 'ContainerMemory'
+      NetworkMode: "awsvpc"
+
+      RequiresCompatibilities:
+        - "FARGATE"
+      ExecutionRoleArn: !Ref 'ECSTaskExecutionRole'
+      TaskRoleArn: !Ref 'ECSTaskExecutionRole'
+      ContainerDefinitions:
+        - Name: !Ref 'ServiceName'
+          Cpu: !Ref 'ContainerCpu'
+          Memory: !Ref 'ContainerMemory'
+          Image: !Ref 'ImageUrl'
+          PortMappings:
+            - ContainerPort: !Ref 'ContainerPort'
+              HostPort: !Ref 'ContainerPort'
+              Protocol: tcp
+###################### Service to deploy From ECR Repositories #######################################
+  Service:
+    Type: AWS::ECS::Service
+    Properties:
+      ServiceName: !Ref 'ServiceName'
+      Cluster: !Ref 'ClusterName'
+      LaunchType: FARGATE
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 75
+      DesiredCount: !Ref 'DesiredCount'
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          SecurityGroups: 
+            - !Ref 'SecurityGroupID'
+          Subnets:
+            - !Ref 'PrivateSubnetOne'
+            - !Ref 'PrivateSubnetTwo'
+            - !Ref 'PrivateSubnetThree'
+
+      TaskDefinition: !Ref 'TaskDefinition'
+      LoadBalancers:
+        - ContainerName: !Ref 'ServiceName'
+        - ContainerPort: !Ref 'ContainerPort'
+        - TargetGroupArn: !Ref 'TGArn1'
+
+#################### Scalable Target to define minimum and maximum capacity ########################
+  ScalableTarget:
+   Type: AWS::ApplicationAutoScaling::ScalableTarget
+   Properties:
+     RoleARN: !Ref 'ECSTaskExecutionRole'
+     ResourceId: !Join ["/", [service, "devel-cluster", !GetAtt [Service, Name]]] 
+     ServiceNamespace: ecs
+     ScalableDimension: ecs:service:DesiredCount
+     MinCapacity: 1
+     MaxCapacity: 2     
+############################ Target Scaling Policy #############################################
+
+  AutoScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${EnvironmentName}-${ServiceName}-cpu75-scaling-policy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref 'ScalableTarget'
+      ScalableDimension: ecs:service:DesiredCount
+      ServiceNamespace: ecs
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 75.0
+        ScaleInCooldown: 60
+        ScaleOutCooldown: 60
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ECSServiceAverageCPUUtilization
+
+####################### Outputs  ################################################################
+Outputs:
+
+  ECSServiceName:
+    Value: !GetAtt 'Service.Name'
+    Export:
+      Name: !Join [':', [ !Ref 'AWS::StackName', 'ECSServiceName']]
+  AutoScalingPolicyName:
+    Value: !Ref 'AutoScalingPolicy'
+    Export:
+      Name: !Join [':', [ !Ref 'AWS::StackName', 'AutoScalingPolicyName']]
+  TaskDefinitionName:
+    Value: !Ref 'TaskDefinition'
+    Export:
+      Name: !Join [':', [ !Ref 'AWS::StackName', 'TaskDefinitionName']]
